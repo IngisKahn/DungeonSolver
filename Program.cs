@@ -1,5 +1,4 @@
 ﻿using DungeonSolver;
-using System.Runtime.CompilerServices;
 
 Setup[] setups =
     {
@@ -7,10 +6,11 @@ Setup[] setups =
         new(new[] { 6, 2, 4, 1, 5, 4, 4, 5 }, new[] { 4, 4, 4, 4, 3, 4, 2, 6 }, new[] { (7, 1), (2, 5), (8, 6), (1, 8), (5, 8) }, new[] { (2, 3) }),
         new(new[] { 4, 2, 5, 0, 6, 2, 4, 2 }, new[] { 5, 2, 2, 1, 5, 3, 2, 5 }, new[] { (3, 3), (1, 7), (4, 8), (6, 8), (8, 8) }, new[] { (7, 3) }),
         new(new[] { 6, 2, 4, 3, 4, 4, 2, 6 }, new[] { 6, 2, 5, 3, 2, 5, 2, 6 }, new[] { (3, 1), (5, 1), (8, 3), (1, 4), (8, 5), (1, 6), (4, 8), (6, 8) }, new (int, int)[0]),
-        new(new[] { 2, 4, 4, 3, 2, 3, 4, 2 }, new[] { 0, 7, 2, 4, 2, 2, 7, 0 }, new[] { (1, 1), (8, 1), (2, 3), (8, 3), (7, 6), (1, 8), (8, 8) }, new (int, int)[0])
+        new(new[] { 2, 4, 4, 3, 2, 3, 4, 2 }, new[] { 0, 7, 2, 4, 2, 2, 7, 0 }, new[] { (1, 1), (8, 1), (2, 3), (8, 3), (7, 6), (1, 8), (8, 8) }, new (int, int)[0]),
+        new(new[] { 2, 3, 3, 4, 4, 3, 4, 6 }, new[] { 2, 3, 5, 4, 1, 4, 5, 5 }, new[] { (1, 1), (6, 2), (8, 2), (1, 5), (1, 8), (4, 8) }, new[] { (6, 5) })
     };
 
-SolvePuzzle(setups[4], true);
+SolvePuzzle(setups[5], true);
 
 DeepNet net = new(256, new[] { 238 }, 64);
 var iterations = 0;
@@ -28,11 +28,12 @@ for (var wrong = 999; wrong > 0;)
             lastBadIteration = iterations;
             wrong += result;
         }
-        if (lastBadIteration < iterations - 17 )
+        if (lastBadIteration < iterations - 17)
             break;
     }
 }
 
+Console.WriteLine(lastBadIteration);
 var s = net.FeedForward(setups[3].ConvertToNeuralNetInput());
 
 Board b = new(setups[3]);
@@ -41,7 +42,6 @@ for (var i = 0; i < 64; i++)
         b.State[(i & 0x7) + 1, (i >> 3) + 1] = CellState.Wall;
 b.Draw();
 
-Console.WriteLine(lastBadIteration);
 
 int ProcessSetup(DeepNet net, Setup s, bool showOutput)
 {
@@ -60,7 +60,7 @@ int RunNet(DeepNet net, Setup setup, bool showOutput)
 {
     if (showOutput)
         Console.Clear();
-    var board = SolvePuzzle(setup, showOutput);
+    var board = SolvePuzzle(new(setup), showOutput);
     var result = board.GetWallsAsNeuralNetOutput();
     var input = setup.ConvertToNeuralNetInput();
     var wrong = TestSetup(net, input, result);
@@ -71,12 +71,11 @@ int RunNet(DeepNet net, Setup setup, bool showOutput)
     return wrong;
 }
 
-Board SolvePuzzle(Setup setup, bool showOutput) => SolvePuzzle2(new Board(setup), showOutput);
-Board SolvePuzzle2(Board b, bool showOutput = false)
+Board SolvePuzzle(Board b, bool showOutput = false)
 {
     if (showOutput)
         b.Draw();
-    for (; b.SolutionState == SolutionState.None ; )
+    for (; b.SolutionState == SolutionState.None;)
     {
         if (CheckForCompletedLines(b, showOutput))
             continue;
@@ -86,37 +85,105 @@ Board SolvePuzzle2(Board b, bool showOutput = false)
             continue;
         if (CheckForTreasureRoom(b, showOutput))
             continue;
+        if (CheckForOneLeftInLine(b, showOutput))
+            continue;
+        // check for one left dead ends
+        // if unk + empty = count + 1 -> all unks not in line next to monster and next to out of line wall are walls
 
-        // time to guess
-
-        for (var i = 1; i < 8; i++)
-            for (var j = 1; j < 8; j++)
-                if (b.State[i, j] == CellState.Unknown)
-                {
-                    var testBoard = b.Clone();
-                    testBoard.State[i, j] = CellState.Wall;
-                    testBoard = SolvePuzzle2(testBoard);
-                    if (testBoard.SolutionState == SolutionState.Solved)
-                    {
-                        if (!showOutput)
-                            return testBoard;
-                        Console.WriteLine($"Hrmm, had to guess ({i},{j}) is a wall");
-                        b.State[i, j] = CellState.Wall;
-                    }
-                    else
-                    {
-                        if (showOutput)
-                            Console.WriteLine($"Hrmm, ({i},{j}) can't be a wall");
-
-                        b.State[i, j] = CellState.Empty;                        
-                    }
-                    Redraw(b);
-                    i = j = 8;
-                }
+        StartGuessing(ref b, showOutput);
 
         continue;
     }
     return b;
+}
+
+bool CheckForOneLeftInLine(Board board, bool showOutput)
+{
+    for (var i = 1; i <= 8; i++)
+    {
+        var unknowns = b.CountColumn(i, CellState.Unknown);
+        var wallsRemaining = b.ColumnCounts[i - 1] - b.CountColumn(i, CellState.Wall);
+        if (wallsRemaining == unknowns - 1) // the rest are walls except for one
+            for (var j = 1; j <= 8; j++)
+                if (b.State[i, j] == CellState.Unknown && (b.State[i - 1, j] == CellState.Wall || b.State[i + 1, j] == CellState.Wall))
+                {
+                    if (showOutput)
+                        Console.WriteLine($"Cell ({i},{j}) must be a wall - it would create a dead end otherwise");
+                    b.State[i, j] = CellState.Wall;
+                    return true;
+                }
+
+        if (wallsRemaining == 1)
+            for (var j = 1; j <= 8; j++)
+                if (b.State[i, j] == CellState.Monster && b.State[i, j - 1] == CellState.Unknown && b.State[i, j + 1] == CellState.Unknown)
+                {
+                    if (showOutput)
+                        Console.WriteLine($"Monster at ({i}, {j}) must have Empty and Wall next to it, so the rest of column {i} is empty and it's next to walls in row {j}");
+                    b.State[i - 1, j] = CellState.Wall;
+                    b.State[i + 1, j] = CellState.Wall;
+                    for (var k = 1; k <= 8; k++)
+                        if ((k < j - 1 || k > j + 1) && b.State[i, k] == CellState.Unknown)
+                            b.State[i, k] = CellState.Empty;
+                }
+
+        unknowns = b.CountRow(i, CellState.Unknown);
+        wallsRemaining = b.RowCounts[i - 1] - b.CountRow(i, CellState.Wall);
+        if (wallsRemaining == unknowns - 1) // the rest are walls except for one
+            for (var j = 1; j <= 8; j++)
+                if (b.State[j, i] == CellState.Unknown && (b.State[j, i - 1] == CellState.Wall || b.State[j, i + 1] == CellState.Wall))
+                {
+                    if (showOutput)
+                        Console.WriteLine($"Cell ({j},{i}) must be a wall - it would create a dead end otherwise");
+                    b.State[j, i] = CellState.Wall;
+                    return true;
+                }
+
+        if (wallsRemaining == 1)
+            for (var j = 1; j <= 8; j++)
+                if (b.State[j, i] == CellState.Monster && b.State[j - 1, i] == CellState.Unknown && b.State[j + 1, i] == CellState.Unknown)
+                {
+                    if (showOutput)
+                        Console.WriteLine($"Monster at ({j}, {i}) must have Empty and Wall next to it, so the rest of row {i} is empty and it's next to walls in column {j}");
+                    b.State[j, i - 1] = CellState.Wall;
+                    b.State[j, i + 1] = CellState.Wall;
+                    for (var k = 1; k <= 8; k++)
+                        if ((k < j - 1 || k > j + 1) && b.State[k, i] == CellState.Unknown)
+                            b.State[k, i] = CellState.Empty;
+                }
+    }
+    return false;
+}
+
+void StartGuessing(ref Board b, bool showOutput)
+{
+    for (var i = 1; i < 8; i++)
+        for (var j = 1; j < 8; j++)
+            if (b.State[i, j] == CellState.Unknown)
+            {
+                var testBoard = b.Clone();
+                testBoard.State[i, j] = CellState.Wall;
+                testBoard = SolvePuzzle(testBoard);
+                if (testBoard.SolutionState == SolutionState.Solved)
+                {
+                    if (!showOutput)
+                    {
+                        b = testBoard;
+                        return;
+                    }
+                    Console.WriteLine($"Hrmm, had to guess ({i},{j}) is a wall");
+                    b.State[i, j] = CellState.Wall;
+                }
+                else
+                {
+                    if (showOutput)
+                        Console.WriteLine($"Hrmm, ({i},{j}) can't be a wall");
+
+                    b.State[i, j] = CellState.Empty;
+                }
+                if (showOutput)
+                    Redraw(b);
+                i = j = 8;
+            }
 }
 
 int TestSetup(DeepNet net, float[] input, ulong solution)
@@ -349,6 +416,9 @@ static bool CheckForPathOut(Board b, bool showOutput)
                             }
                         }
                     }
+
+                    // add check for one left lines
+
                     break;
                 case CellState.Empty:
                     var en = b.GetNeighbors(i, j, CellState.Unknown);
