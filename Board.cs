@@ -22,6 +22,15 @@
             this.State[setupTreasure.Item1, setupTreasure.Item2] = CellState.Treasure;
     }
 
+    private Board(Board copy)
+    {
+        Array.Copy(copy.ColumnCounts, this.ColumnCounts, 8);
+        Array.Copy(copy.RowCounts, this.RowCounts, 8);
+        Array.Copy(copy.State, this.State, 100);
+    }
+
+    public Board Clone() => new(this);
+
     public int CountNeighbors(int column, int row, CellState cellState)
     {
         var count = 0;
@@ -114,5 +123,149 @@
 
         return result;
     }
+
+    public SolutionState SolutionState
+    {
+        get
+        {
+            var result = SolutionState.Solved;
+
+            for (var i = 1; i <= 8; i++)
+            {
+                var deltaColumns = this.CountColumn(i, CellState.Wall) - this.ColumnCounts[i - 1];
+                if (deltaColumns > 0)
+                    return SolutionState.Invalid;
+                if (deltaColumns != 0)
+                    result = SolutionState.None;
+                var deltaRows = this.CountRow(i, CellState.Wall) - this.RowCounts[i - 1];
+                if (deltaRows > 0)
+                    return SolutionState.Invalid;
+                if (deltaRows != 0)
+                    result = SolutionState.None;
+
+                for (var j = 1; j <= 8; j++)
+                {
+                    switch (this.State[i, j])
+                    {
+                        case CellState.Empty:
+                            if (this.GetNeighbors(i, j, CellState.Wall).Count > 2)
+                                return SolutionState.Invalid;
+                            break;
+                        case CellState.Monster:
+                            if (this.GetNeighbors(i, j, CellState.Empty).Count > 1)
+                                return SolutionState.Invalid;
+                            break;
+                        case CellState.Treasure:
+                            if (this.CanBeRoom(i, j).Count < 1)
+                                return SolutionState.Invalid;
+                            break;
+                    }
+                    if (i < 8 && j < 8 && this.GetArea(i, j, 2, 2).All(c => c == CellState.Empty))
+                        return SolutionState.Invalid;
+                }
+            }
+
+            return result;
+        }
+    }      
+
+    public List<(int X, int Y, bool HasExit)> CanBeRoom(int i, int j)
+    {
+        List<(int X, int Y, bool HasExit)> canBeRoom = new();
+        for (var k = 0; k < 9; k++)
+        {
+            var xp = i - Math.DivRem(k, 3, out var yp);
+            yp = j - yp;
+            var noGood = false;
+            for (var l = xp; l < xp + 3 && !noGood; l++)
+                for (var m = yp; m < yp + 3 && !noGood; m++)
+                {
+                    if (l == i && m == j)
+                        continue;
+                    switch (this.State[l, m])
+                    {
+                        case CellState.Unknown:
+                        case CellState.Empty:
+                        case CellState.EmptyRoom:
+                            break;
+                        default:
+                            noGood = true;
+                            break;
+                    }
+                }
+            if (noGood)
+                continue;
+            // ok, room is clear, make sure no monsters or treasure are touching
+            // and that only one exit is possible
+            static (int, int, int, int)? CountBorder(CellState[] cellState)
+            {
+                var canBeWalls = 0;
+                var canBeExits = 0;
+                var exits = 0;
+                var walls = 0;
+                foreach (var cell in cellState)
+                    switch (cell)
+                    {
+                        case CellState.Unknown:
+                            canBeExits++;
+                            canBeWalls++;
+                            break;
+                        case CellState.Monster:
+                        case CellState.Treasure:
+                            return null;
+                        case CellState.Wall:
+                            canBeWalls++;
+                            walls++;
+                            break;
+                        case CellState.Empty:
+                            canBeExits++;
+                            exits++;
+                            break;
+                    }
+                return (canBeWalls, canBeExits, exits, walls);
+            }
+
+            var topWall = CountBorder(this.GetArea(xp, yp - 1, 3, 1));
+            if (topWall == null)
+                continue;
+            var bottomWall = CountBorder(this.GetArea(xp, yp + 3, 3, 1));
+            if (bottomWall == null)
+                continue;
+            var leftWall = CountBorder(this.GetArea(xp - 1, yp, 1, 3));
+            if (leftWall == null)
+                continue;
+            var rightWall = CountBorder(this.GetArea(xp + 3, yp, 1, 3));
+            if (rightWall == null)
+                continue;
+
+            var canBeWalls = topWall.Value.Item1 + bottomWall.Value.Item1 + leftWall.Value.Item1 + rightWall.Value.Item1;
+            var canBeExits = topWall.Value.Item2 + bottomWall.Value.Item2 + leftWall.Value.Item2 + rightWall.Value.Item2;
+            var exits = topWall.Value.Item3 + bottomWall.Value.Item3 + leftWall.Value.Item3 + rightWall.Value.Item3;
+
+
+            if (exits > 1 || canBeExits < 1 || canBeWalls < 11)
+                continue;
+
+            if (yp > 1 && this.RowCounts[yp - 2] - this.CountRow(yp - 1, CellState.Wall) < ((topWall.Value.Item3 == 0 ? 2 : 3) - topWall.Value.Item4))
+                continue;
+            if (yp < 6 && this.RowCounts[yp + 2] - this.CountRow(yp + 3, CellState.Wall) < ((topWall.Value.Item3 == 0 ? 2 : 3) - bottomWall.Value.Item4))
+                continue;
+            if (xp > 1 && this.ColumnCounts[xp - 2] - this.CountColumn(xp - 1, CellState.Wall) < ((topWall.Value.Item3 == 0 ? 2 : 3) - leftWall.Value.Item4))
+                continue;
+            if (xp < 6 && this.ColumnCounts[xp + 2] - this.CountColumn(xp + 3, CellState.Wall) < ((topWall.Value.Item3 == 0 ? 2 : 3) - rightWall.Value.Item4))
+                continue;
+
+            // add checks for monsters in dead ends 2 away
+            canBeRoom.Add((xp, yp, exits == 1));
+        }
+        return canBeRoom;
+    }
+}
+
+public enum SolutionState
+{
+    None,
+    Invalid,
+    Solved
 }
 

@@ -1,14 +1,16 @@
 ﻿using DungeonSolver;
+using System.Runtime.CompilerServices;
 
 Setup[] setups =
     {
         new(new[] { 1, 4, 2, 7, 0, 4, 4, 4 }, new[] { 3, 2, 5, 3, 4, 1, 4, 4 }, new[] { (8, 2), (3, 3), (8, 4), (8, 6), (8, 8) }, new[] { (2, 6) }),
         new(new[] { 6, 2, 4, 1, 5, 4, 4, 5 }, new[] { 4, 4, 4, 4, 3, 4, 2, 6 }, new[] { (7, 1), (2, 5), (8, 6), (1, 8), (5, 8) }, new[] { (2, 3) }),
         new(new[] { 4, 2, 5, 0, 6, 2, 4, 2 }, new[] { 5, 2, 2, 1, 5, 3, 2, 5 }, new[] { (3, 3), (1, 7), (4, 8), (6, 8), (8, 8) }, new[] { (7, 3) }),
-        new(new[] { 6, 2, 4, 3, 4, 4, 2, 6 }, new[] { 6, 2, 5, 3, 2, 5, 2, 6 }, new[] { (3, 1), (5, 1), (8, 3), (1, 4), (8, 5), (1, 6), (4, 8), (6, 8) }, new (int, int)[0])
+        new(new[] { 6, 2, 4, 3, 4, 4, 2, 6 }, new[] { 6, 2, 5, 3, 2, 5, 2, 6 }, new[] { (3, 1), (5, 1), (8, 3), (1, 4), (8, 5), (1, 6), (4, 8), (6, 8) }, new (int, int)[0]),
+        new(new[] { 2, 4, 4, 3, 2, 3, 4, 2 }, new[] { 0, 7, 2, 4, 2, 2, 7, 0 }, new[] { (1, 1), (8, 1), (2, 3), (8, 3), (7, 6), (1, 8), (8, 8) }, new (int, int)[0])
     };
 
-//SolvePuzzle(setups[2], true);
+SolvePuzzle(setups[4], true);
 
 DeepNet net = new(256, new[] { 238 }, 64);
 var iterations = 0;
@@ -26,10 +28,18 @@ for (var wrong = 999; wrong > 0;)
             lastBadIteration = iterations;
             wrong += result;
         }
-        if (lastBadIteration < iterations - 16 )
+        if (lastBadIteration < iterations - 17 )
             break;
     }
 }
+
+var s = net.FeedForward(setups[3].ConvertToNeuralNetInput());
+
+Board b = new(setups[3]);
+for (var i = 0; i < 64; i++)
+    if (s[i] > 0)
+        b.State[(i & 0x7) + 1, (i >> 3) + 1] = CellState.Wall;
+b.Draw();
 
 Console.WriteLine(lastBadIteration);
 
@@ -61,12 +71,12 @@ int RunNet(DeepNet net, Setup setup, bool showOutput)
     return wrong;
 }
 
-Board SolvePuzzle(Setup setup, bool showOutput)
+Board SolvePuzzle(Setup setup, bool showOutput) => SolvePuzzle2(new Board(setup), showOutput);
+Board SolvePuzzle2(Board b, bool showOutput = false)
 {
-    Board b = new(setup);
     if (showOutput)
         b.Draw();
-    for (; ; )
+    for (; b.SolutionState == SolutionState.None ; )
     {
         if (CheckForCompletedLines(b, showOutput))
             continue;
@@ -76,7 +86,35 @@ Board SolvePuzzle(Setup setup, bool showOutput)
             continue;
         if (CheckForTreasureRoom(b, showOutput))
             continue;
-        break;
+
+        // time to guess
+
+        for (var i = 1; i < 8; i++)
+            for (var j = 1; j < 8; j++)
+                if (b.State[i, j] == CellState.Unknown)
+                {
+                    var testBoard = b.Clone();
+                    testBoard.State[i, j] = CellState.Wall;
+                    testBoard = SolvePuzzle2(testBoard);
+                    if (testBoard.SolutionState == SolutionState.Solved)
+                    {
+                        if (!showOutput)
+                            return testBoard;
+                        Console.WriteLine($"Hrmm, had to guess ({i},{j}) is a wall");
+                        b.State[i, j] = CellState.Wall;
+                    }
+                    else
+                    {
+                        if (showOutput)
+                            Console.WriteLine($"Hrmm, ({i},{j}) can't be a wall");
+
+                        b.State[i, j] = CellState.Empty;                        
+                    }
+                    Redraw(b);
+                    i = j = 8;
+                }
+
+        continue;
     }
     return b;
 }
@@ -112,93 +150,7 @@ static bool CheckForTreasureRoom(Board b, bool showOutput)
         {
             if (b.State[i, j] != CellState.Treasure)
                 continue;
-            List<(int X, int Y, bool HasExit)> canBeRoom = new();
-            for (var k = 0; k < 9; k++)
-            {
-                var xp = i - Math.DivRem(k, 3, out var yp);
-                yp = j - yp;
-                var noGood = false;
-                for (var l = xp; l < xp + 3 && !noGood; l++)
-                    for (var m = yp; m < yp + 3 && !noGood; m++)
-                    {
-                        if (l == i && m == j)
-                            continue;
-                        switch (b.State[l, m])
-                        {
-                            case CellState.Unknown:
-                            case CellState.Empty:
-                            case CellState.EmptyRoom:
-                                break;
-                            default:
-                                noGood = true;
-                                break;
-                        }
-                    }
-                if (noGood)
-                    continue;
-                // ok, room is clear, make sure no monsters or treasure are touching
-                // and that only one exit is possible
-                static (int, int, int, int)? CountBorder(CellState[] cellState)
-                {
-                    var canBeWalls = 0;
-                    var canBeExits = 0;
-                    var exits = 0;
-                    var walls = 0;
-                    foreach (var cell in cellState)
-                        switch (cell)
-                        {
-                            case CellState.Unknown:
-                                canBeExits++;
-                                canBeWalls++;
-                                break;
-                            case CellState.Monster:
-                            case CellState.Treasure:
-                                return null;
-                            case CellState.Wall:
-                                canBeWalls++;
-                                walls++;
-                                break;
-                            case CellState.Empty:
-                                canBeExits++;
-                                exits++;
-                                break;
-                        }
-                    return (canBeWalls, canBeExits, exits, walls);
-                }
-
-                var topWall = CountBorder(b.GetArea(xp, yp - 1, 3, 1));
-                if (topWall == null)
-                    continue;
-                var bottomWall = CountBorder(b.GetArea(xp, yp + 3, 3, 1));
-                if (bottomWall == null)
-                    continue;
-                var leftWall = CountBorder(b.GetArea(xp - 1, yp, 1, 3));
-                if (leftWall == null)
-                    continue;
-                var rightWall = CountBorder(b.GetArea(xp + 3, yp, 1, 3));
-                if (rightWall == null)
-                    continue;
-
-                var canBeWalls = topWall.Value.Item1 + bottomWall.Value.Item1 + leftWall.Value.Item1 + rightWall.Value.Item1;
-                var canBeExits = topWall.Value.Item2 + bottomWall.Value.Item2 + leftWall.Value.Item2 + rightWall.Value.Item2;
-                var exits = topWall.Value.Item3 + bottomWall.Value.Item3 + leftWall.Value.Item3 + rightWall.Value.Item3;
-
-
-                if (exits > 1 || canBeExits < 1 || canBeWalls < 11)
-                    continue;
-
-                if (yp > 1 && b.RowCounts[yp - 2] - b.CountRow(yp - 1, CellState.Wall) < ((topWall.Value.Item3 == 0 ? 2 : 3) - topWall.Value.Item4))
-                    continue;
-                if (yp < 6 && b.RowCounts[yp + 2] - b.CountRow(yp + 3, CellState.Wall) < ((topWall.Value.Item3 == 0 ? 2 : 3) - bottomWall.Value.Item4))
-                    continue;
-                if (xp > 1 && b.ColumnCounts[xp - 2] - b.CountColumn(xp - 1, CellState.Wall) < ((topWall.Value.Item3 == 0 ? 2 : 3) - leftWall.Value.Item4))
-                    continue;
-                if (xp < 6 && b.ColumnCounts[xp + 2] - b.CountColumn(xp + 3, CellState.Wall) < ((topWall.Value.Item3 == 0 ? 2 : 3) - rightWall.Value.Item4))
-                    continue;
-
-                // add checks for monsters in dead ends 2 away
-                canBeRoom.Add((xp, yp, exits == 1));
-            }
+            var canBeRoom = b.CanBeRoom(i, j);
             if (canBeRoom.Count == 0)
                 continue;
             if (canBeRoom.Count == 1)
