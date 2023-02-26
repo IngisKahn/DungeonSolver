@@ -10,7 +10,7 @@ Setup[] setups =
         new(new[] { 2, 3, 3, 4, 4, 3, 4, 6 }, new[] { 2, 3, 5, 4, 1, 4, 5, 5 }, new[] { (1, 1), (6, 2), (8, 2), (1, 5), (1, 8), (4, 8) }, new[] { (6, 5) })
     };
 
-SolvePuzzle(setups[5], true);
+SolvePuzzle(new(setups[5]), true);
 
 DeepNet net = new(256, new[] { 238 }, 64);
 var iterations = 0;
@@ -36,11 +36,11 @@ for (var wrong = 999; wrong > 0;)
 Console.WriteLine(lastBadIteration);
 var s = net.FeedForward(setups[3].ConvertToNeuralNetInput());
 
-Board b = new(setups[3]);
-for (var i = 0; i < 64; i++)
-    if (s[i] > 0)
-        b.State[(i & 0x7) + 1, (i >> 3) + 1] = CellState.Wall;
-b.Draw();
+//Board b = new(setups[3]);
+//for (var i = 0; i < 64; i++)
+//    if (s[i] > 0)
+//        b.State[(i & 0x7) + 1, (i >> 3) + 1] = CellState.Wall;
+//b.Draw();
 
 
 int ProcessSetup(DeepNet net, Setup s, bool showOutput)
@@ -71,117 +71,133 @@ int RunNet(DeepNet net, Setup setup, bool showOutput)
     return wrong;
 }
 
-Board SolvePuzzle(Board b, bool showOutput = false)
+Board SolvePuzzle(Board board, bool showOutput = false)
 {
     if (showOutput)
-        b.Draw();
-    for (; b.SolutionState == SolutionState.None;)
+        board.Draw();
+    for (; board.SolutionState == SolutionState.None;)
     {
-        if (CheckForCompletedLines(b, showOutput))
+        if (CheckForCompletedLines(board, showOutput))
             continue;
-        if (CheckForPathOut(b, showOutput))
+        if (CheckForPathOut(board, showOutput))
             continue;
-        if (CheckQuads(b, showOutput))
+        if (CheckQuads(board, showOutput))
             continue;
-        if (CheckForTreasureRoom(b, showOutput))
+        if (CheckForTreasureRoom(board, showOutput))
             continue;
-        if (CheckForOneLeftInLine(b, showOutput))
+        if (CheckForOneLeftInLine(board, showOutput))
             continue;
         // check for one left dead ends
         // if unk + empty = count + 1 -> all unks not in line next to monster and next to out of line wall are walls
 
-        StartGuessing(ref b, showOutput);
+        StartGuessing(ref board, showOutput);
 
         continue;
     }
-    return b;
+    return board;
 }
 
 bool CheckForOneLeftInLine(Board board, bool showOutput)
 {
     for (var i = 1; i <= 8; i++)
     {
-        var unknowns = b.CountColumn(i, CellState.Unknown);
-        var wallsRemaining = b.ColumnCounts[i - 1] - b.CountColumn(i, CellState.Wall);
+        var unknowns = board.CountColumn(i, CellState.Unknown);
+        var wallsRemaining = board.ColumnCounts[i - 1] - board.CountColumn(i, CellState.Wall);
         if (wallsRemaining == unknowns - 1) // the rest are walls except for one
             for (var j = 1; j <= 8; j++)
-                if (b.State[i, j] == CellState.Unknown && (b.State[i - 1, j] == CellState.Wall || b.State[i + 1, j] == CellState.Wall))
+                if (board.State[i, j] == CellState.Unknown && (board.State[i - 1, j] == CellState.Wall || board.State[i + 1, j] == CellState.Wall)
+                    && board.State[i, j - 1] != CellState.Monster && board.State[i, j + 1] != CellState.Monster)
                 {
+                    board.State[i, j] = CellState.Wall;
                     if (showOutput)
+                    {
                         Console.WriteLine($"Cell ({i},{j}) must be a wall - it would create a dead end otherwise");
-                    b.State[i, j] = CellState.Wall;
-                    return true;
+                        Redraw(board);
+                    }
+                        return true;
                 }
 
         if (wallsRemaining == 1)
             for (var j = 1; j <= 8; j++)
-                if (b.State[i, j] == CellState.Monster && b.State[i, j - 1] == CellState.Unknown && b.State[i, j + 1] == CellState.Unknown)
+                if (board.State[i, j] == CellState.Monster && board.State[i, j - 1] == CellState.Unknown && board.State[i, j + 1] == CellState.Unknown)
                 {
-                    if (showOutput)
-                        Console.WriteLine($"Monster at ({i}, {j}) must have Empty and Wall next to it, so the rest of column {i} is empty and it's next to walls in row {j}");
-                    b.State[i - 1, j] = CellState.Wall;
-                    b.State[i + 1, j] = CellState.Wall;
+                    board.State[i - 1, j] = CellState.Wall;
+                    board.State[i + 1, j] = CellState.Wall;
                     for (var k = 1; k <= 8; k++)
-                        if ((k < j - 1 || k > j + 1) && b.State[i, k] == CellState.Unknown)
-                            b.State[i, k] = CellState.Empty;
+                        if ((k < j - 1 || k > j + 1) && board.State[i, k] == CellState.Unknown)
+                            board.State[i, k] = CellState.Empty;
+                    if (showOutput)
+                    { 
+                        Console.WriteLine($"Monster at ({i}, {j}) must have Empty and Wall next to it, so the rest of column {i} is empty and it's next to walls in row {j}");
+                        Redraw(board);
+                    }
+                    return false;
                 }
 
-        unknowns = b.CountRow(i, CellState.Unknown);
-        wallsRemaining = b.RowCounts[i - 1] - b.CountRow(i, CellState.Wall);
+        unknowns = board.CountRow(i, CellState.Unknown);
+        wallsRemaining = board.RowCounts[i - 1] - board.CountRow(i, CellState.Wall);
         if (wallsRemaining == unknowns - 1) // the rest are walls except for one
             for (var j = 1; j <= 8; j++)
-                if (b.State[j, i] == CellState.Unknown && (b.State[j, i - 1] == CellState.Wall || b.State[j, i + 1] == CellState.Wall))
+                if (board.State[j, i] == CellState.Unknown && (board.State[j, i - 1] == CellState.Wall || board.State[j, i + 1] == CellState.Wall)
+                    && board.State[j - 1, i] != CellState.Monster && board.State[j + 1, i] != CellState.Monster)
                 {
+                    board.State[j, i] = CellState.Wall;
                     if (showOutput)
+                    { 
                         Console.WriteLine($"Cell ({j},{i}) must be a wall - it would create a dead end otherwise");
-                    b.State[j, i] = CellState.Wall;
+                        Redraw(board);
+                    }
                     return true;
                 }
 
         if (wallsRemaining == 1)
             for (var j = 1; j <= 8; j++)
-                if (b.State[j, i] == CellState.Monster && b.State[j - 1, i] == CellState.Unknown && b.State[j + 1, i] == CellState.Unknown)
+                if (board.State[j, i] == CellState.Monster && board.State[j - 1, i] == CellState.Unknown && board.State[j + 1, i] == CellState.Unknown)
                 {
-                    if (showOutput)
-                        Console.WriteLine($"Monster at ({j}, {i}) must have Empty and Wall next to it, so the rest of row {i} is empty and it's next to walls in column {j}");
-                    b.State[j, i - 1] = CellState.Wall;
-                    b.State[j, i + 1] = CellState.Wall;
+                    board.State[j, i - 1] = CellState.Wall;
+                    board.State[j, i + 1] = CellState.Wall;
                     for (var k = 1; k <= 8; k++)
-                        if ((k < j - 1 || k > j + 1) && b.State[k, i] == CellState.Unknown)
-                            b.State[k, i] = CellState.Empty;
+                        if ((k < j - 1 || k > j + 1) && board.State[k, i] == CellState.Unknown)
+                            board.State[k, i] = CellState.Empty;
+                    if (showOutput)
+                    { 
+                        Console.WriteLine($"Monster at ({j}, {i}) must have Empty and Wall next to it, so the rest of row {i} is empty and it's next to walls in column {j}");
+                        Redraw(board);
+                    }
+                    return false;
                 }
     }
     return false;
 }
 
-void StartGuessing(ref Board b, bool showOutput)
+void StartGuessing(ref Board board, bool showOutput)
 {
     for (var i = 1; i < 8; i++)
         for (var j = 1; j < 8; j++)
-            if (b.State[i, j] == CellState.Unknown)
+            if (board.State[i, j] == CellState.Unknown)
             {
-                var testBoard = b.Clone();
+                var testBoard = board.Clone();
                 testBoard.State[i, j] = CellState.Wall;
                 testBoard = SolvePuzzle(testBoard);
                 if (testBoard.SolutionState == SolutionState.Solved)
                 {
                     if (!showOutput)
                     {
-                        b = testBoard;
+                        board = testBoard;
                         return;
                     }
                     Console.WriteLine($"Hrmm, had to guess ({i},{j}) is a wall");
-                    b.State[i, j] = CellState.Wall;
+                    board.State[i, j] = CellState.Wall;
                 }
                 else
                 {
                     if (showOutput)
                         Console.WriteLine($"Hrmm, ({i},{j}) can't be a wall");
 
-                    b.State[i, j] = CellState.Empty;
+                    board.State[i, j] = CellState.Empty;
                 }
                 if (showOutput)
-                    Redraw(b);
+                    Redraw(board);
                 i = j = 8;
             }
 }
