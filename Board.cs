@@ -160,7 +160,7 @@
                                 return SolutionState.Invalid;
                             break;
                     }
-                    if (i < 8 && j < 8 && this.GetArea(i, j, 2, 2).All(c => c == CellState.Empty))
+                    if (i < 8 && j < 8 && this.GetArea(i, j, 2, 2).All(c => c == CellState.Empty) && !this.GetArea(i - 1, j - 1, 4, 4).Any(c => c == CellState.Treasure))
                         return SolutionState.Invalid;
                 }
             }

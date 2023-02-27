@@ -7,10 +7,11 @@ Setup[] setups =
         new(new[] { 4, 2, 5, 0, 6, 2, 4, 2 }, new[] { 5, 2, 2, 1, 5, 3, 2, 5 }, new[] { (3, 3), (1, 7), (4, 8), (6, 8), (8, 8) }, new[] { (7, 3) }),
         new(new[] { 6, 2, 4, 3, 4, 4, 2, 6 }, new[] { 6, 2, 5, 3, 2, 5, 2, 6 }, new[] { (3, 1), (5, 1), (8, 3), (1, 4), (8, 5), (1, 6), (4, 8), (6, 8) }, new (int, int)[0]),
         new(new[] { 2, 4, 4, 3, 2, 3, 4, 2 }, new[] { 0, 7, 2, 4, 2, 2, 7, 0 }, new[] { (1, 1), (8, 1), (2, 3), (8, 3), (7, 6), (1, 8), (8, 8) }, new (int, int)[0]),
-        new(new[] { 2, 3, 3, 4, 4, 3, 4, 6 }, new[] { 2, 3, 5, 4, 1, 4, 5, 5 }, new[] { (1, 1), (6, 2), (8, 2), (1, 5), (1, 8), (4, 8) }, new[] { (6, 5) })
+        new(new[] { 2, 3, 3, 4, 4, 3, 4, 6 }, new[] { 2, 3, 5, 4, 1, 4, 5, 5 }, new[] { (1, 1), (6, 2), (8, 2), (1, 5), (1, 8), (4, 8) }, new[] { (6, 5) }),
+        new(new[] { 4, 1, 3, 4, 3, 3, 2, 6 }, new[] { 3, 1, 2, 6, 6, 1, 4, 3 }, new[] { (6, 1), (8, 1), (7, 4), (2, 5), (1, 6), (3, 8) }, new[] { (2, 3), (5, 7) })
     };
 
-SolvePuzzle(new(setups[5]), true);
+SolvePuzzle(new(setups[6]), true);
 
 DeepNet net = new(256, new[] { 238 }, 64);
 var iterations = 0;
@@ -106,7 +107,8 @@ bool CheckForOneLeftInLine(Board board, bool showOutput)
         if (wallsRemaining == unknowns - 1) // the rest are walls except for one
             for (var j = 1; j <= 8; j++)
                 if (board.State[i, j] == CellState.Unknown && (board.State[i - 1, j] == CellState.Wall || board.State[i + 1, j] == CellState.Wall)
-                    && board.State[i, j - 1] != CellState.Monster && board.State[i, j + 1] != CellState.Monster)
+                    && board.State[i, j - 1] != CellState.Monster && board.State[i, j + 1] != CellState.Monster
+                    && board.State[i, j - 1] != CellState.Empty && board.State[i, j + 1] != CellState.Empty)
                 {
                     board.State[i, j] = CellState.Wall;
                     if (showOutput)
@@ -121,17 +123,24 @@ bool CheckForOneLeftInLine(Board board, bool showOutput)
             for (var j = 1; j <= 8; j++)
                 if (board.State[i, j] == CellState.Monster && board.State[i, j - 1] == CellState.Unknown && board.State[i, j + 1] == CellState.Unknown)
                 {
+                    var changed = board.State[i - 1, j] == CellState.Unknown;
                     board.State[i - 1, j] = CellState.Wall;
+                    changed |= board.State[i + 1, j] == CellState.Unknown;
                     board.State[i + 1, j] = CellState.Wall;
                     for (var k = 1; k <= 8; k++)
                         if ((k < j - 1 || k > j + 1) && board.State[i, k] == CellState.Unknown)
+                        {
+                            changed = true;
                             board.State[i, k] = CellState.Empty;
-                    if (showOutput)
+                        }
+                    if (showOutput && changed)
                     { 
                         Console.WriteLine($"Monster at ({i}, {j}) must have Empty and Wall next to it, so the rest of column {i} is empty and it's next to walls in row {j}");
                         Redraw(board);
                     }
-                    return false;
+                    if (changed)
+                        return true;
+                    break;
                 }
 
         unknowns = board.CountRow(i, CellState.Unknown);
@@ -139,7 +148,8 @@ bool CheckForOneLeftInLine(Board board, bool showOutput)
         if (wallsRemaining == unknowns - 1) // the rest are walls except for one
             for (var j = 1; j <= 8; j++)
                 if (board.State[j, i] == CellState.Unknown && (board.State[j, i - 1] == CellState.Wall || board.State[j, i + 1] == CellState.Wall)
-                    && board.State[j - 1, i] != CellState.Monster && board.State[j + 1, i] != CellState.Monster)
+                    && board.State[j - 1, i] != CellState.Monster && board.State[j + 1, i] != CellState.Monster
+                    && board.State[j - 1, i] != CellState.Empty && board.State[j + 1, i] != CellState.Empty)
                 {
                     board.State[j, i] = CellState.Wall;
                     if (showOutput)
@@ -154,17 +164,24 @@ bool CheckForOneLeftInLine(Board board, bool showOutput)
             for (var j = 1; j <= 8; j++)
                 if (board.State[j, i] == CellState.Monster && board.State[j - 1, i] == CellState.Unknown && board.State[j + 1, i] == CellState.Unknown)
                 {
+                    var changed = board.State[j, i - 1] == CellState.Unknown;
                     board.State[j, i - 1] = CellState.Wall;
+                    changed |= board.State[j, i + 1] == CellState.Unknown;
                     board.State[j, i + 1] = CellState.Wall;
                     for (var k = 1; k <= 8; k++)
                         if ((k < j - 1 || k > j + 1) && board.State[k, i] == CellState.Unknown)
+                        {
+                            changed = true;
                             board.State[k, i] = CellState.Empty;
-                    if (showOutput)
+                        }
+                    if (showOutput && changed)
                     { 
                         Console.WriteLine($"Monster at ({j}, {i}) must have Empty and Wall next to it, so the rest of row {i} is empty and it's next to walls in column {j}");
                         Redraw(board);
                     }
-                    return false;
+                    if (changed)
+                        return true;
+                    break;
                 }
     }
     return false;
@@ -321,7 +338,7 @@ static bool CheckQuads(Board b, bool showOutput)
                         break;
                 }
             }
-            if (fail || unk == null)
+            if (fail || unk == null || b.GetArea(unk.Value.X - 1, unk.Value.Y - 1, 4, 4).Any(c => c == CellState.Treasure))
                 continue;
             b.State[unk.Value.X, unk.Value.Y] = CellState.Wall;
             if (showOutput)
