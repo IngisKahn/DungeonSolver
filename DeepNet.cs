@@ -63,14 +63,12 @@ internal class DeepNet
 
     public float[] FeedForward(float[] input)
     {
-        float[,] matrix;
-        float[] toNodes;
         float[,] biases;
         var fromNodes = input;
         for (var k = 0; k < this.nodes.Length; k++)
         {
-            matrix = weights[k];
-            toNodes = this.nodes[k];
+            var matrix = this.weights[k];
+            var toNodes = this.nodes[k];
             biases = this.biases[k];
             for (var j = 0; j < toNodes.Length; j++)
             {
@@ -125,13 +123,13 @@ internal class DeepNet
 
         var momentumStep = momentumStepSize * MathF.Sqrt(1 - momentumAccelerationDecayCorrection) / (1 - momentumSpeedDecayCorrection);
 
-        (float Adjustment, float Speed, float Acceletation) ComputeMomentumAdjustment(float lastSpeed, float lastAccleration, float delta)
+        (float Adjustment, float Speed, float Acceletation) ComputeMomentumAdjustment(float lastSpeed, float lastAcceleration, float delta)
         {
             var momentumSpeed = momentumSpeedDecay * lastSpeed + (1 - momentumSpeedDecay) * delta;
-            var momentumAccleration = momentumAccelerationDecay * lastAccleration + (1 - momentumAccelerationDecay) * delta * delta;
+            var momentumAcceleration = momentumAccelerationDecay * lastAcceleration + (1 - momentumAccelerationDecay) * delta * delta;
 
-            var momentumAdjustment = momentumStep * momentumSpeed / (MathF.Sqrt(momentumAccleration) + momentumEpsilon);
-            return (momentumAdjustment, momentumSpeed, momentumAccleration);
+            var momentumAdjustment = momentumStep * momentumSpeed / (MathF.Sqrt(momentumAcceleration) + momentumEpsilon);
+            return (momentumAdjustment, momentumSpeed, momentumAcceleration);
         }
         
         for (var outputNodeIndex = 0; outputNodeIndex < layerNodes.Length; outputNodeIndex++) 
