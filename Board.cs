@@ -1,4 +1,6 @@
-﻿public class Board
+﻿namespace DungeonSolver;
+
+public class Board
 {
     public readonly CellState[,] State = new CellState[10, 10];
     public readonly int[] ColumnCounts = new int[8];
@@ -63,8 +65,8 @@
     {
         var cells = new CellState[width * height];
         for (var x = 0; x < width; x++)
-            for (var y = 0; y < height; y++)
-                cells[x * height + y] = this.State[column + x, row + y];
+        for (var y = 0; y < height; y++)
+            cells[x * height + y] = this.State[column + x, row + y];
         return cells;
     }
 
@@ -118,8 +120,8 @@
         var result = 0ul;
 
         for (var i = 1; i <= 8; i++)
-            for (var j = 1; j <= 8; j++)
-                result |= this.State[j, i] == CellState.Wall ? (1ul << (8 - i) * 8 + 8 - j) : 0;
+        for (var j = 1; j <= 8; j++)
+            result |= this.State[j, i] == CellState.Wall ? (1ul << (8 - i) * 8 + 8 - j) : 0;
 
         return result;
     }
@@ -160,7 +162,7 @@
                                 return SolutionState.Invalid;
                             break;
                     }
-                    if (i < 8 && j < 8 && this.GetArea(i, j, 2, 2).All(c => c == CellState.Empty) && !this.GetArea(i - 1, j - 1, 4, 4).Any(c => c == CellState.Treasure))
+                    if (i < 8 && j < 8 && this.GetArea(i, j, 2, 2).All(c => c == CellState.Empty) && this.GetArea(i - 1, j - 1, 4, 4).All(c => c != CellState.Treasure))
                         return SolutionState.Invalid;
                 }
             }
@@ -178,21 +180,21 @@
             yp = j - yp;
             var noGood = false;
             for (var l = xp; l < xp + 3 && !noGood; l++)
-                for (var m = yp; m < yp + 3 && !noGood; m++)
+            for (var m = yp; m < yp + 3 && !noGood; m++)
+            {
+                if (l == i && m == j)
+                    continue;
+                switch (this.State[l, m])
                 {
-                    if (l == i && m == j)
-                        continue;
-                    switch (this.State[l, m])
-                    {
-                        case CellState.Unknown:
-                        case CellState.Empty:
-                        case CellState.EmptyRoom:
-                            break;
-                        default:
-                            noGood = true;
-                            break;
-                    }
+                    case CellState.Unknown:
+                    case CellState.Empty:
+                    case CellState.EmptyRoom:
+                        break;
+                    default:
+                        noGood = true;
+                        break;
                 }
+            }
             if (noGood)
                 continue;
             // ok, room is clear, make sure no monsters or treasure are touching
@@ -268,4 +270,3 @@ public enum SolutionState
     Invalid,
     Solved
 }
-

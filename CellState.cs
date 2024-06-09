@@ -1,4 +1,6 @@
-﻿public enum CellState
+﻿namespace DungeonSolver;
+
+public enum CellState
 {
     Unknown,
     Empty,
@@ -7,4 +9,3 @@
     Monster,
     Treasure
 }
-
